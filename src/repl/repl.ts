@@ -4,12 +4,13 @@ import type { Finding, FindingStatus } from "../types.js";
 import {
   printList,
   printInspect,
-  printFix,
   printIgnore,
   printHelp,
   printFinish,
+  printVibeAnalysis,
 } from "./display.js";
 import { generateReport } from "../report/html.js";
+import type { VibeAnalysis } from "../analysis/behavior.js";
 
 export async function startRepl(
   findings: Finding[],
@@ -21,7 +22,8 @@ export async function startRepl(
     stack: string[];
     contributors: number;
   },
-  repoPath: string
+  repoPath: string,
+  vibeAnalysis?: VibeAnalysis
 ): Promise<void> {
   const statuses: FindingStatus[] = findings.map(() => "open");
   let current = -1;
@@ -61,27 +63,6 @@ export async function startRepl(
             )
           );
           console.log();
-        }
-        rl.prompt();
-        return;
-      }
-
-      if (cmd === "fix" || cmd === "f") {
-        if (current < 0) {
-          console.log(
-            pc.dim(
-              pc.gray("inspect a finding first — type its number.")
-            )
-          );
-          console.log();
-        } else {
-          printFix(findings[current]);
-          if (
-            findings[current].fix &&
-            statuses[current] !== "ignored"
-          ) {
-            statuses[current] = "fixed";
-          }
         }
         rl.prompt();
         return;
@@ -129,6 +110,21 @@ export async function startRepl(
 
       if (cmd === "list" || cmd === "l") {
         printList(findings, statuses);
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === "vibe" || cmd === "v" || cmd === "prompts") {
+        if (vibeAnalysis) {
+          printVibeAnalysis(vibeAnalysis);
+        } else {
+          console.log(
+            pc.dim(
+              pc.gray("no vibe analysis available — run with --with-claude-history or --with-cursor-history")
+            )
+          );
+        }
+        console.log();
         rl.prompt();
         return;
       }

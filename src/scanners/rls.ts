@@ -83,7 +83,6 @@ async function scanRLSStatic(repoPath: string): Promise<{
         meta: `anon key can read/write this table via the public API`,
         source: "rls",
         trace: null,
-        fix: null,
         manual: null,
       });
     } else if (table.isPermissive) {
@@ -95,7 +94,6 @@ async function scanRLSStatic(repoPath: string): Promise<{
         meta: `policy uses USING (true) or allows anon full access`,
         source: "rls",
         trace: null,
-        fix: null,
         manual: null,
       });
     }
@@ -208,7 +206,6 @@ async function scanRLSLive(dbUrl: string): Promise<{
           meta: `pg_tables rowsecurity=false · anon key can access this table`,
           source: "rls",
           trace: null,
-          fix: null,
           manual: null,
         });
       }

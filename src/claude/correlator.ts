@@ -8,7 +8,6 @@ import type {
 
 interface Correlation {
   trace: PromptTrace;
-  fix: string[];
 }
 
 export function correlateFindings(
@@ -22,7 +21,6 @@ export function correlateFindings(
     const correlation = findCorrelation(finding, sessions, repoPath);
     if (correlation) {
       finding.trace = correlation.trace;
-      finding.fix = correlation.fix;
     } else if (!finding.manual) {
       finding.manual = guessManualNote(finding);
     }
@@ -79,8 +77,7 @@ function findCorrelation(
 
       if (matchedFile) {
         const trace = buildTrace(finding, prompt, session, matchedFile, repoPath);
-        const fix = generateFix(finding, prompt);
-        return { trace, fix };
+        return { trace };
       }
     }
   }
@@ -120,6 +117,7 @@ function buildTrace(
     session: `${ts} · claude code`,
     file: `${relFile}${lineCount ? ` (+${lineCount} lines)` : ""}`,
     result: inferResult(finding),
+    missingConstraints: detectMissingConstraints(finding, prompt),
   };
 }
 
@@ -159,77 +157,85 @@ function inferResult(finding: Finding): string {
   return `The prompt produced this code without the security constraint. The omission led to ${finding.title.toLowerCase()}.`;
 }
 
-function generateFix(finding: Finding, prompt: ClaudePrompt): string[] {
-  const originalPrompt = prompt.text.toLowerCase();
+interface Concern {
+  keywords: string[];
+  label: string;
+}
+
+const CONCERN_MAP: Record<string, Concern[]> = {
+  crypto: [
+    { keywords: ["auth tag", "authentication tag", "gcm tag", "tag verification", "verify tag"], label: "No mention of auth tag verification for GCM mode" },
+    { keywords: ["key derivation", "kdf", "pbkdf", "scrypt", "argon"], label: "No mention of key derivation function" },
+    { keywords: ["tamper", "integrity", "reject ciphertext", "verify integrity"], label: "No mention of tampered ciphertext rejection" },
+    { keywords: ["iv", "nonce", "initialization vector", "random iv"], label: "No mention of IV/nonce management" },
+  ],
+  rls: [
+    { keywords: ["rls", "row level security", "enable rls"], label: "No mention of Row Level Security" },
+    { keywords: ["policy", "policies", "access policy"], label: "No mention of access policy definition" },
+    { keywords: ["anon", "anonymous", "deny anon", "block anon"], label: "No mention of denying anonymous access" },
+  ],
+  injection: [
+    { keywords: ["parameterized", "prepared statement", "bind param", "placeholder"], label: "No mention of parameterized queries" },
+    { keywords: ["validate input", "input validation", "sanitize input"], label: "No mention of input validation" },
+  ],
+  webhook: [
+    { keywords: ["signature", "verify signature", "stripe-signature", "webhook secret"], label: "No mention of signature verification" },
+    { keywords: ["replay", "idempotency", "idempotent"], label: "No mention of replay protection" },
+  ],
+  xss: [
+    { keywords: ["sanitize", "sanitization", "escape", "encoding", "encode"], label: "No mention of output sanitization/encoding" },
+    { keywords: ["csp", "content-security-policy", "content security"], label: "No mention of Content Security Policy" },
+    { keywords: ["innerhtml", "dangerouslysetinnerhtml", "raw html"], label: "No mention of avoiding raw HTML insertion" },
+  ],
+  auth: [
+    { keywords: ["session", "token", "jwt", "verify token", "check session"], label: "No mention of session/token verification" },
+    { keywords: ["access control", "authorization", "permission", "role"], label: "No mention of access control" },
+    { keywords: ["401", "unauthorized", "reject unauthenticated"], label: "No mention of rejecting unauthenticated requests" },
+  ],
+  upload: [
+    { keywords: ["mime", "file type", "content-type", "allowed types"], label: "No mention of MIME type validation" },
+    { keywords: ["size limit", "max size", "file size", "cap size"], label: "No mention of file size limit" },
+    { keywords: ["filename", "sanitize name", "path traversal"], label: "No mention of filename sanitization" },
+  ],
+};
+
+function categorizeFinding(finding: Finding): string | null {
   const title = finding.title.toLowerCase();
+  const meta = finding.meta.toLowerCase();
 
-  if (title.includes("rls") || title.includes("row level security")) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Enable row level security and add a policy so a user can only select rows`,
-      `for their own records. Deny anon access by default."`,
-    ];
-  }
-
-  if (title.includes("upload") || title.includes("validation")) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Validate MIME type (images only), cap size at 5MB, sanitize the filename`,
-      `against path traversal, require an authenticated session, and enforce an`,
-      `RLS policy so a user can only write to their own folder."`,
-    ];
-  }
-
-  if (title.includes("injection") || title.includes("interpolat")) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Validate the params as ISO dates and use parameterized Supabase filters —`,
-      `never string-concatenate user input into the query."`,
-    ];
-  }
-
-  if (title.includes("webhook") || title.includes("signature")) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Verify the Stripe-Signature header against the webhook secret and reject`,
-      `any event that fails verification."`,
-    ];
-  }
-
-  if (title.includes("xss") || title.includes("cross-site")) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Sanitize all user-provided content before rendering. Use proper encoding`,
-      `and never set innerHTML with unescaped user data."`,
-    ];
-  }
-
+  if (title.includes("rls") || title.includes("row level security")) return "rls";
+  if (title.includes("upload") || title.includes("validation")) return "upload";
+  if (title.includes("injection") || title.includes("interpolat")) return "injection";
+  if (title.includes("webhook") || title.includes("signature")) return "webhook";
+  if (title.includes("xss") || title.includes("cross-site")) return "xss";
   if (
     title.includes("cipher") || title.includes("crypto") ||
     title.includes("gcm") || title.includes("decipher") ||
     title.includes("hash") || title.includes("hmac")
-  ) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Use authenticated encryption (e.g. GCM with auth tag verification),`,
-      `a strong key derivation function, and reject tampered ciphertext."`,
-    ];
+  ) return "crypto";
+  if (meta.includes("auth") || title.includes("auth")) return "auth";
+
+  return null;
+}
+
+function detectMissingConstraints(finding: Finding, prompt: ClaudePrompt): string[] {
+  const category = categorizeFinding(finding);
+  if (!category) return [];
+
+  const concerns = CONCERN_MAP[category];
+  if (!concerns) return [];
+
+  const promptText = prompt.text.toLowerCase();
+  const missing: string[] = [];
+
+  for (const concern of concerns) {
+    const mentioned = concern.keywords.some((kw) => promptText.includes(kw));
+    if (!mentioned) {
+      missing.push(concern.label);
+    }
   }
 
-  if (title.includes("auth") && !title.includes("webhook")) {
-    return [
-      `"${truncate(prompt.text, 80)}.`,
-      `Add authentication middleware that verifies the session token before`,
-      `processing the request. Reject unauthenticated requests with 401."`,
-    ];
-  }
-
-  // Generic fallback fix
-  return [
-    `"${truncate(prompt.text, 80)}.`,
-    `Add security constraints: validate inputs, enforce authentication,`,
-    `and follow least-privilege defaults."`,
-  ];
+  return missing;
 }
 
 function formatTimestamp(ts: string): string {

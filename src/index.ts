@@ -6,8 +6,10 @@ import { runAllScanners } from "./scanners/aggregator.js";
 import { readClaudeHistory } from "./claude/reader.js";
 import { readCursorHistory } from "./cursor/reader.js";
 import { correlateFindings } from "./claude/correlator.js";
-import { printBoot, printNoFindings } from "./repl/display.js";
+import { printBoot, printVibeAnalysis, printNoFindings } from "./repl/display.js";
 import { startRepl } from "./repl/repl.js";
+import { analyzeVibePatterns } from "./analysis/behavior.js";
+import type { VibeAnalysis } from "./analysis/behavior.js";
 import type { ClaudeSession } from "./types.js";
 
 async function main(): Promise<void> {
@@ -93,13 +95,20 @@ async function main(): Promise<void> {
   // Boot line
   printBoot(result.stats, withClaudeHistory, withCursorHistory);
 
+  // Vibe coding behavior analysis
+  let vibeAnalysis: VibeAnalysis | undefined;
+  if (allSessions.length > 0) {
+    vibeAnalysis = analyzeVibePatterns(allSessions, result.findings);
+    printVibeAnalysis(vibeAnalysis);
+  }
+
   if (result.findings.length === 0) {
     printNoFindings();
     return;
   }
 
   // Start interactive REPL
-  await startRepl(result.findings, result.stats, repoPath);
+  await startRepl(result.findings, result.stats, repoPath, vibeAnalysis);
 }
 
 function printUsage(): void {
@@ -127,10 +136,10 @@ ${pc.dim("EXAMPLES")}
 
 ${pc.dim("COMMANDS (interactive)")}
   1-N        inspect a finding
-  fix / f    show the secure prompt rewrite
   ignore / i dismiss the current finding
   next / n   jump to the next open finding
   list / l   reprint findings
+  vibe / v   show vibe coding behavior analysis
   help / ?   show commands
   q          finish and write report
 

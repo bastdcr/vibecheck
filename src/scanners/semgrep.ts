@@ -209,7 +209,6 @@ function resultsToFindings(results: SemgrepMatch[], repoPath: string): Finding[]
       meta: `semgrep · ${shortId}`,
       source: "semgrep",
       trace: null,
-      fix: null,
       manual: null,
     });
   }

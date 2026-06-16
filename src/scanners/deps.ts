@@ -98,7 +98,6 @@ function parseAudit(json: string): Finding[] {
       meta: `npm audit · ${sev} severity${vuln.fixAvailable ? " · fix available" : ""}`,
       source: "deps",
       trace: null,
-      fix: null,
       manual:
         "Not a generation issue — a vulnerable dependency. Update or replace the package. No prompt rewrite applies.",
     });

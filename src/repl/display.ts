@@ -1,5 +1,6 @@
 import pc from "picocolors";
 import type { Finding, FindingStatus } from "../types.js";
+import type { VibeAnalysis } from "../analysis/behavior.js";
 import { computeScore } from "../scanners/aggregator.js";
 
 const RULE_LINE =
@@ -62,6 +63,49 @@ export function printBoot(
   }
 }
 
+export function printVibeAnalysis(analysis: VibeAnalysis): void {
+  const hasSignals =
+    analysis.blindChains > 0 ||
+    analysis.highDelegationPrompts > 0 ||
+    analysis.filesWithoutReview > 0 ||
+    analysis.sessionsWithoutSecurityMention > 0;
+
+  if (!hasSignals) return;
+
+  console.log();
+  console.log(pc.bold(pc.yellow("VIBE CODING ANALYSIS")));
+
+  if (analysis.blindChains > 0) {
+    console.log(
+      `  ${pc.yellow(`${analysis.blindChains}`)} blind approval chain${analysis.blindChains > 1 ? "s" : ""} ${pc.dim("(3+ consecutive ok/continue)")}`
+    );
+  }
+  if (analysis.highDelegationPrompts > 0) {
+    console.log(
+      `  ${pc.yellow(`${analysis.highDelegationPrompts}`)} high-delegation prompt${analysis.highDelegationPrompts > 1 ? "s" : ""} ${pc.dim("(>20 lines generated per word)")}`
+    );
+  }
+  if (analysis.filesWithoutReview > 0) {
+    console.log(
+      `  ${pc.yellow(`${analysis.filesWithoutReview}`)} file${analysis.filesWithoutReview > 1 ? "s" : ""} accepted without follow-up review`
+    );
+  }
+  if (analysis.sessionsWithoutSecurityMention > 0) {
+    console.log(
+      `  ${pc.yellow(`${analysis.sessionsWithoutSecurityMention}`)}/${analysis.totalSessions} sessions have no mention of security constraints`
+    );
+  }
+
+  if (analysis.findingsFromBlindChains > 0) {
+    console.log();
+    console.log(
+      pc.dim(
+        `  ${analysis.findingsFromBlindChains} finding${analysis.findingsFromBlindChains > 1 ? "s" : ""} traced to blind approval chains`
+      )
+    );
+  }
+}
+
 export function printList(
   findings: Finding[],
   statuses: FindingStatus[]
@@ -85,7 +129,6 @@ export function printList(
     const status = statuses[i];
 
     let tag = "";
-    if (status === "fixed") tag = " " + pc.green("✓ fix shown");
     if (status === "ignored") tag = " " + pc.dim("⊘ ignored");
 
     const line = `  ${pc.dim(n)}  ${sevTag(f.severity)}  ${pc.dim(f.path)}${tag}`;
@@ -138,11 +181,20 @@ export function printInspect(
     console.log(
       `  ${pc.dim(pc.gray("result  "))} ${finding.trace.result}`
     );
+
+    if (finding.trace.missingConstraints.length > 0) {
+      console.log();
+      console.log(pc.bold(pc.yellow("MISSING CONSTRAINTS")) + pc.dim(pc.gray(" in this prompt")));
+      for (const c of finding.trace.missingConstraints) {
+        console.log(`  ${pc.yellow("⚠")} ${c}`);
+      }
+    }
+
     console.log();
     console.log(
       pc.dim(
         pc.gray(
-          `commands: ${pc.magenta("fix")} show secure prompt · ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
+          `commands: ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
         )
       )
     );
@@ -152,48 +204,12 @@ export function printInspect(
     console.log(
       pc.dim(
         pc.gray(
-          `commands: ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}  ${pc.dim(pc.gray("(no prompt rewrite for this one)"))}`
+          `commands: ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
         )
       )
     );
   }
 
-  console.log();
-}
-
-export function printFix(finding: Finding): void {
-  if (!finding.fix) {
-    console.log(
-      pc.dim(
-        pc.gray(
-          "this finding has no prompt rewrite — it isn't a generation issue."
-        )
-      )
-    );
-    console.log();
-    return;
-  }
-
-  console.log(
-    `${pc.bold(pc.green("REWRITTEN PROMPT"))} ${pc.dim(pc.gray("— same task, generated securely the first time"))}`
-  );
-
-  for (let i = 0; i < finding.fix.length; i++) {
-    if (i === 0) {
-      console.log(`  ${finding.fix[i]}`);
-    } else {
-      console.log(`  ${pc.green(finding.fix[i])}`);
-    }
-  }
-
-  console.log();
-  console.log(
-    pc.dim(
-      pc.gray(
-        `→ regenerated against this prompt: ${pc.green("0 findings")}. vibecheck shows the fix — it never edits your code.`
-      )
-    )
-  );
   console.log();
 }
 
@@ -212,9 +228,6 @@ export function printHelp(findingCount: number): void {
     `  ${pc.magenta(`1-${findingCount}`)}      inspect a finding (shows summary + prompt trace)`
   );
   console.log(
-    `  ${pc.magenta("fix")}      show the secure prompt for the current finding`
-  );
-  console.log(
     `  ${pc.magenta("ignore")}   dismiss the current finding`
   );
   console.log(
@@ -222,6 +235,9 @@ export function printHelp(findingCount: number): void {
   );
   console.log(
     `  ${pc.magenta("list")}     show all findings again`
+  );
+  console.log(
+    `  ${pc.magenta("vibe")}     show vibe coding behavior analysis`
   );
   console.log(
     `  ${pc.magenta("q")}        finish and write the report`

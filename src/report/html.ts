@@ -44,11 +44,9 @@ export async function generateReport(
     const sevColor = f.severity === "critical" ? "#d96b4a" : "#e6a345";
     const sevLabel = f.severity === "critical" ? "CRITICAL" : "MEDIUM";
     const statusTag =
-      status === "fixed"
-        ? '<span style="color:#b6d77a"> ✓ fix shown</span>'
-        : status === "ignored"
-          ? '<span style="color:#8c8470"> ⊘ ignored</span>'
-          : "";
+      status === "ignored"
+        ? '<span style="color:#8c8470"> ⊘ ignored</span>'
+        : "";
     const titleStyle =
       status !== "open"
         ? 'style="text-decoration:line-through;color:#5f5847"'
@@ -76,19 +74,14 @@ export async function generateReport(
         <div class="trace-row"><span class="trace-key">result</span> ${escapeHtml(f.trace.result)}</div>
       </div>`;
 
-      if (f.fix) {
+      if (f.trace.missingConstraints && f.trace.missingConstraints.length > 0) {
         findingsHtml += `
-      <div class="fix">
-        <div class="fix-label">REWRITTEN PROMPT</div>`;
-        for (let j = 0; j < f.fix.length; j++) {
-          if (j === 0) {
-            findingsHtml += `\n        <div class="fix-line">${escapeHtml(f.fix[j])}</div>`;
-          } else {
-            findingsHtml += `\n        <div class="fix-line fix-add">${escapeHtml(f.fix[j])}</div>`;
-          }
+      <div class="constraints">
+        <div class="constraints-label">MISSING CONSTRAINTS</div>`;
+        for (const c of f.trace.missingConstraints) {
+          findingsHtml += `\n        <div class="constraint-line">⚠ ${escapeHtml(c)}</div>`;
         }
         findingsHtml += `
-        <div class="fix-note">→ regenerated against this prompt: <span style="color:#b6d77a">0 findings</span>. vibecheck shows the fix — it never edits your code.</div>
       </div>`;
       }
     } else if (f.manual) {
@@ -148,14 +141,12 @@ export async function generateReport(
     background: rgba(169,143,214,0.08); padding: 1px 5px;
     border-radius: 4px; border: 1px solid rgba(169,143,214,0.18);
   }
-  .fix {
-    margin-top: 14px; padding: 12px; background: rgba(182,215,122,0.05);
-    border: 1px solid rgba(182,215,122,0.15); border-radius: 6px;
+  .constraints {
+    margin-top: 14px; padding: 12px; background: rgba(230,163,69,0.05);
+    border: 1px solid rgba(230,163,69,0.15); border-radius: 6px;
   }
-  .fix-label { color: var(--green); font-weight: 700; margin-bottom: 8px; }
-  .fix-line { padding-left: 8px; margin: 2px 0; }
-  .fix-add { color: var(--green); }
-  .fix-note { color: var(--faint); font-size: 12px; margin-top: 10px; padding-left: 8px; }
+  .constraints-label { color: var(--amber); font-weight: 700; margin-bottom: 8px; }
+  .constraint-line { padding-left: 8px; margin: 2px 0; color: var(--amber); }
   .manual { color: var(--dim); margin-top: 10px; padding: 8px; }
   .bridge {
     margin-top: 30px; padding: 20px; text-align: center;

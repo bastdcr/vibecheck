@@ -143,7 +143,6 @@ function matchesToFindings(matches: GitleaksMatch[]): Finding[] {
       meta: `gitleaks · ${isServiceRole ? "key bypasses RLS entirely · rotate immediately" : "rotate this credential immediately"}`,
       source: "gitleaks",
       trace: null,
-      fix: null,
       manual:
         "Not a generation issue — a leaked credential. Rotate the key in the relevant service, then purge it from git history. No prompt rewrite applies.",
     });

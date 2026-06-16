@@ -3,6 +3,7 @@ export interface PromptTrace {
   session: string;
   file: string;
   result: string;
+  missingConstraints: string[];
 }
 
 export interface Finding {
@@ -13,11 +14,10 @@ export interface Finding {
   meta: string;
   source: "gitleaks" | "semgrep" | "rls" | "deps";
   trace: PromptTrace | null;
-  fix: string[] | null;
   manual: string | null;
 }
 
-export type FindingStatus = "open" | "fixed" | "ignored";
+export type FindingStatus = "open" | "ignored";
 
 export interface ScanResult {
   findings: Finding[];
