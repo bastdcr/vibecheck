@@ -144,7 +144,7 @@ export async function scanSAST(
       };
     }
 
-    return { findings: resultsToFindings(result.results ?? []), available: true };
+    return { findings: resultsToFindings(result.results ?? [], repoPath), available: true };
   } catch (err: unknown) {
     const e = err as { code?: number; stdout?: string; stderr?: string; message?: string };
 
@@ -154,7 +154,7 @@ export async function scanSAST(
         const result = parseSemgrepOutput(e.stdout);
 
         if (result.results && result.results.length > 0) {
-          return { findings: resultsToFindings(result.results), available: true };
+          return { findings: resultsToFindings(result.results, repoPath), available: true };
         }
 
         if (result.errors?.length) {
@@ -178,14 +178,23 @@ export async function scanSAST(
   }
 }
 
-function resultsToFindings(results: SemgrepMatch[]): Finding[] {
+function normalizePath(filePath: string, repoPath: string): string {
+  const prefix = repoPath.endsWith("/") ? repoPath : repoPath + "/";
+  if (filePath.startsWith(prefix)) {
+    return filePath.slice(prefix.length);
+  }
+  return filePath;
+}
+
+function resultsToFindings(results: SemgrepMatch[], repoPath: string): Finding[] {
   const seen = new Set<string>();
   const findings: Finding[] = [];
 
   const relevant = results.filter(isRelevant);
 
   for (const m of relevant) {
-    const key = `${m.check_id}:${m.path}`;
+    const relPath = normalizePath(m.path, repoPath);
+    const key = `${m.check_id}:${relPath}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
@@ -195,7 +204,7 @@ function resultsToFindings(results: SemgrepMatch[]): Finding[] {
     findings.push({
       id: 0,
       severity: mapSeverity(m.extra.severity),
-      path: m.path,
+      path: relPath,
       title: message.length > 120 ? message.slice(0, 117) + "…" : message,
       meta: `semgrep · ${shortId}`,
       source: "semgrep",

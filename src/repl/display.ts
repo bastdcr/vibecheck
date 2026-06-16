@@ -69,11 +69,14 @@ export function printList(
   const { score, verdict, col } = computeScore(findings, statuses);
   const open = statuses.filter((s) => s === "open").length;
   const cleared = findings.length - open;
+  const traced = findings.filter((f) => f.trace !== null).length;
 
   console.log();
-  console.log(
-    `${colorByCol(pc.bold(verdict), col)}  score ${colorByCol(pc.bold(String(score)), col)}${pc.dim(pc.gray("/10"))}  ·  ${pc.dim(`${open} open · ${cleared} cleared`)}`
-  );
+  let summaryLine = `${colorByCol(pc.bold(verdict), col)}  score ${colorByCol(pc.bold(String(score)), col)}${pc.dim(pc.gray("/10"))}  ·  ${pc.dim(`${open} open · ${cleared} cleared`)}`;
+  if (traced > 0) {
+    summaryLine += `  ·  ${pc.magenta(`${traced} traced to prompts`)}`;
+  }
+  console.log(summaryLine);
   console.log(pc.dim(pc.gray(RULE_LINE)));
 
   for (let i = 0; i < findings.length; i++) {

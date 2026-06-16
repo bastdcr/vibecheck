@@ -9,6 +9,20 @@ const CLAUDE_DIRS = [
   join(homedir(), ".claude"),
 ];
 
+const GENERIC_PROMPT_RE = /^(ok|oui|yes|yep|go|continue|next|sure|d'accord|parfait|merci|thanks|good|bien|c'est bon|les autres|et les autres|la suite)/i;
+
+function isGenericPrompt(text: string): boolean {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length < 25 || GENERIC_PROMPT_RE.test(clean);
+}
+
+function findSubstantivePrompt(prompts: ClaudePrompt[]): ClaudePrompt | null {
+  for (let i = prompts.length - 1; i >= 0; i--) {
+    if (!isGenericPrompt(prompts[i].text)) return prompts[i];
+  }
+  return prompts[prompts.length - 1] ?? null;
+}
+
 export async function readClaudeHistory(
   repoPath: string
 ): Promise<{ sessions: ClaudeSession[]; sessionCount: number }> {
@@ -104,15 +118,15 @@ async function parseSessionFile(
     if (role === "human" || role === "user") {
       // Skip pure tool_result lines (they are user-type but contain tool output, not prompts)
       if (entry.toolUseResult !== undefined) {
-        // But harvest file paths from toolUseResult
+        // Harvest file paths from toolUseResult, attach to the best prompt
         const tur = entry.toolUseResult;
         if (tur && typeof tur === "object") {
           const turObj = tur as Record<string, unknown>;
           const fp = turObj.filePath as string;
           if (fp && prompts.length > 0) {
-            const lastPrompt = prompts[prompts.length - 1];
-            if (!lastPrompt.filesGenerated.includes(fp)) {
-              lastPrompt.filesGenerated.push(fp);
+            const target = findSubstantivePrompt(prompts)!;
+            if (!target.filesGenerated.includes(fp)) {
+              target.filesGenerated.push(fp);
             }
           }
         }
@@ -140,11 +154,11 @@ async function parseSessionFile(
     if (role === "assistant") {
       const toolCalls = extractToolCalls(msg);
       if (toolCalls.length > 0 && prompts.length > 0) {
-        const lastPrompt = prompts[prompts.length - 1];
-        lastPrompt.toolCalls.push(...toolCalls);
+        const target = findSubstantivePrompt(prompts)!;
+        target.toolCalls.push(...toolCalls);
         for (const tc of toolCalls) {
-          if (tc.filePath && !lastPrompt.filesGenerated.includes(tc.filePath)) {
-            lastPrompt.filesGenerated.push(tc.filePath);
+          if (tc.filePath && !target.filesGenerated.includes(tc.filePath)) {
+            target.filesGenerated.push(tc.filePath);
           }
         }
       }

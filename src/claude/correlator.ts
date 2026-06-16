@@ -134,6 +134,13 @@ function inferResult(finding: Finding): string {
   if (title.includes("xss") || title.includes("cross-site")) {
     return "User input rendered without sanitization. The prompt didn't mention output encoding.";
   }
+  if (
+    title.includes("cipher") || title.includes("crypto") ||
+    title.includes("gcm") || title.includes("decipher") ||
+    title.includes("hash") || title.includes("hmac")
+  ) {
+    return "The cryptographic operation is missing a required security parameter. The prompt didn't specify the full crypto requirements.";
+  }
   if (meta.includes("auth") || title.includes("auth")) {
     return "No authentication check generated. The prompt didn't specify access control.";
   }
@@ -186,6 +193,18 @@ function generateFix(finding: Finding, prompt: ClaudePrompt): string[] {
       `"${truncate(prompt.text, 80)}.`,
       `Sanitize all user-provided content before rendering. Use proper encoding`,
       `and never set innerHTML with unescaped user data."`,
+    ];
+  }
+
+  if (
+    title.includes("cipher") || title.includes("crypto") ||
+    title.includes("gcm") || title.includes("decipher") ||
+    title.includes("hash") || title.includes("hmac")
+  ) {
+    return [
+      `"${truncate(prompt.text, 80)}.`,
+      `Use authenticated encryption (e.g. GCM with auth tag verification),`,
+      `a strong key derivation function, and reject tampered ciphertext."`,
     ];
   }
 

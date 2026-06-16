@@ -6,6 +6,20 @@ import type { ClaudeSession, ClaudePrompt, ToolCall } from "../types.js";
 
 const CURSOR_PROJECTS_DIR = join(homedir(), ".cursor", "projects");
 
+const GENERIC_PROMPT_RE = /^(ok|oui|yes|yep|go|continue|next|sure|d'accord|parfait|merci|thanks|good|bien|c'est bon|les autres|et les autres|la suite)/i;
+
+function isGenericPrompt(text: string): boolean {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length < 25 || GENERIC_PROMPT_RE.test(clean);
+}
+
+function findSubstantivePrompt(prompts: ClaudePrompt[]): ClaudePrompt | null {
+  for (let i = prompts.length - 1; i >= 0; i--) {
+    if (!isGenericPrompt(prompts[i].text)) return prompts[i];
+  }
+  return prompts[prompts.length - 1] ?? null;
+}
+
 /**
  * Build the Cursor project slug from an absolute repo path.
  * /Users/foo/Documents/github/titane → Users-foo-Documents-github-titane
@@ -97,11 +111,11 @@ async function parseTranscript(
     if (role === "assistant" && Array.isArray(msgContent)) {
       const toolCalls = extractToolCalls(msgContent);
       if (toolCalls.length > 0 && prompts.length > 0) {
-        const lastPrompt = prompts[prompts.length - 1];
-        lastPrompt.toolCalls.push(...toolCalls);
+        const target = findSubstantivePrompt(prompts)!;
+        target.toolCalls.push(...toolCalls);
         for (const tc of toolCalls) {
-          if (tc.filePath && !lastPrompt.filesGenerated.includes(tc.filePath)) {
-            lastPrompt.filesGenerated.push(tc.filePath);
+          if (tc.filePath && !target.filesGenerated.includes(tc.filePath)) {
+            target.filesGenerated.push(tc.filePath);
           }
         }
       }
