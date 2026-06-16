@@ -103,6 +103,7 @@ export async function removeHook(repoPath: string): Promise<void> {
         /\n*# vibecheck hook\nnpx vibe-checking[^\n]*\nif \[ \$\? -ne 0 \]; then exit 1; fi/g,
         ""
       )
+      .replace(/\n*# vibecheck hook\nnpx vibe-checking[^\n]*/g, "")
       .trimEnd() + "\n";
     await writeFile(path, cleaned, "utf-8");
     console.log(pc.green("✓ vibecheck removed from pre-push hook."));
