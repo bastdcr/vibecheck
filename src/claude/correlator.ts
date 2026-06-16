@@ -113,7 +113,7 @@ function buildTrace(
   const relFile = relativize(matchedFile, repoPath);
 
   return {
-    prompt: `"${truncate(prompt.text, 120)}"`,
+    prompt: `"${prompt.text.replace(/\n/g, " ").trim()}"`,
     session: `${ts} · claude code`,
     file: `${relFile}${lineCount ? ` (+${lineCount} lines)` : ""}`,
     result: inferResult(finding),

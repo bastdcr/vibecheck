@@ -133,10 +133,11 @@ export function printList(
     if (status === "solved") tag = " " + pc.green("✓ solved");
     if (status === "ignored") tag = " " + pc.dim("⊘ ignored");
 
-    const line = `  ${pc.dim(n)}  ${sevTag(f.severity)}  ${pc.dim(f.path)}${tag}`;
+    const traceMarker = f.trace ? pc.magenta("◆") + " " : "  ";
+    const line = `  ${pc.dim(n)}  ${sevTag(f.severity)}  ${traceMarker}${pc.dim(f.path)}${tag}`;
     const titleText =
       status === "open" ? f.title : pc.dim(pc.strikethrough(f.title));
-    const title = `      ${titleText}`;
+    const title = `       ${titleText}`;
 
     console.log(line);
     console.log(title);
