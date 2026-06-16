@@ -1,6 +1,8 @@
 # vibecheck
 
-Audit AI-generated codebases — trace security findings back to the prompts that caused them.
+Security audit for AI-generated codebases. Finds vulnerabilities, then traces them back to the prompt that caused them.
+
+No account. No API key. Nothing leaves your machine.
 
 ## Quick start
 
@@ -8,84 +10,49 @@ Audit AI-generated codebases — trace security findings back to the prompts tha
 npx vibe-checking --with-cursor-history
 ```
 
-No account. No API key. No upload. Everything stays local.
+Run this from your project directory. The tool scans your code, reads your Cursor session history, and shows which prompts introduced each vulnerability.
 
-## What it does
+## What it checks
 
-1. **Scans** your repo for secrets, SAST issues, missing Supabase RLS, and vulnerable dependencies
-2. **Reads** your Claude Code and/or Cursor session history
-3. **Correlates** each finding to the prompt that generated it — the PROMPT TRACE
-4. **Shows** rewritten prompts that would have produced secure code the first time
-5. **Generates** a local HTML report (`vibecheck-report.html`)
+- **Secrets** — leaked API keys, tokens, credentials in git history (via gitleaks)
+- **Code vulnerabilities** — injection, XSS, auth gaps, unverified webhooks (via semgrep)
+- **Supabase RLS** — tables missing Row Level Security in your migrations
+- **Dependencies** — known CVEs in your packages (via npm audit)
 
-Without `--with-claude-history` or `--with-cursor-history`, the scan still runs and produces findings — but without prompt traces or rewritten prompts. Add the flags to get the full correlation.
+gitleaks and semgrep are auto-installed if missing. If installation fails, the tool skips that check and continues.
 
-## How it works
+## Prompt tracing
 
-No AI, no API keys, no network calls to proprietary services. The tool runs four local scanners, reads local history files, and matches them together.
+This is what makes vibecheck different from a regular scanner.
 
-### Scanners
+When you add `--with-cursor-history` or `--with-claude-history`, the tool reads the session files that Cursor and Claude Code store locally on your machine. It matches each finding to the prompt that generated the vulnerable code, and shows how the prompt should have been written.
 
-| Scanner | What it checks | How |
-|---------|---------------|-----|
-| **gitleaks** | Secrets in git history (committed-then-deleted keys are still compromised) | Local binary, scans all commits |
-| **semgrep** | SAST: injection, XSS, unverified webhooks, auth gaps | Local binary, uses free open-source rules (`--config auto`) |
-| **RLS** | Supabase tables missing Row Level Security | Parses `supabase/migrations/*.sql` files directly |
-| **npm audit** | Known CVEs in dependencies | Built-in npm command, queries the public registry |
-
-If gitleaks or semgrep aren't installed, the tool attempts to install them automatically. If that fails, it skips that scanner and continues — it never crashes.
-
-### Prompt correlation
-
-The tool reads session history files that Claude Code and Cursor store **locally on your disk**:
-
-- **Claude Code** — `~/.claude/projects/` (JSONL files, one per session)
-- **Cursor** — `~/.cursor/projects/{project}/agent-transcripts/` (JSONL files)
-
-From each session, it extracts:
-- User prompts (what you asked)
-- Tool calls (Write, StrReplace, apply_migration...) and the file paths they touched
-
-Then it matches: if a scanner finds a vulnerability in `app/api/upload/route.ts`, and a session shows a Write to that same file after your prompt *"add an avatar upload endpoint"*, the finding is traced back to that prompt.
-
-The rewritten prompts are static templates (no LLM call) — the tool works fully offline.
-
-## Requirements
-
-- Node.js >= 18
-- [gitleaks](https://github.com/gitleaks/gitleaks) and [semgrep](https://semgrep.dev) for full scanning (auto-installed if missing)
+Without these flags, you still get the full security scan — just without the prompt correlation.
 
 ## Usage
 
 ```bash
-npx vibe-checking                                             # scan only (no prompt correlation)
-npx vibe-checking --with-claude-history                       # scan + trace Claude Code prompts
-npx vibe-checking --with-cursor-history                       # scan + trace Cursor prompts
-npx vibe-checking --with-claude-history --with-cursor-history # scan + trace both
-npx vibe-checking --db-url postgres://...                     # include live Supabase RLS check
-npx vibe-checking ~/projects/my-app                           # scan a specific directory
+npx vibe-checking                         # security scan only
+npx vibe-checking --with-cursor-history   # scan + trace Cursor prompts
+npx vibe-checking --with-claude-history   # scan + trace Claude Code prompts
 ```
 
 ## Interactive commands
 
+Once the scan completes, you get an interactive prompt:
+
 | Command | Action |
 |---------|--------|
-| `1-N` | Inspect a finding (summary + prompt trace) |
-| `fix` / `f` | Show the secure prompt rewrite |
-| `ignore` / `i` | Dismiss the current finding |
-| `next` / `n` | Jump to the next open finding |
-| `list` / `l` | Reprint findings with updated score |
-| `help` / `?` | Show commands |
-| `q` | Finish and write the HTML report |
+| `1`, `2`, `3`... | Inspect a finding |
+| `fix` | Show the rewritten secure prompt |
+| `ignore` | Dismiss the current finding |
+| `next` | Jump to the next open finding |
+| `list` | Reprint the list with updated score |
+| `q` | Save an HTML report and exit |
 
 ## Privacy
 
-No code, prompts, or secrets leave this machine. Ever.
-
-- All scanners run locally
-- Session history is read from local files, never uploaded
-- The HTML report is written to your repo directory, not sent anywhere
-- No account, no auth, no telemetry
+Everything runs locally. The scanners are local binaries. The session history is read from local files. The HTML report is saved to your project directory. Nothing is uploaded, no telemetry, no account required.
 
 ---
 
