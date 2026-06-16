@@ -32,9 +32,10 @@ Without these flags, you still get the full security scan — just without the p
 ## Usage
 
 ```bash
-npx vibe-checking                         # security scan only
-npx vibe-checking --with-cursor-history   # scan + trace Cursor prompts
-npx vibe-checking --with-claude-history   # scan + trace Claude Code prompts
+npx vibe-checking                                             # security scan only
+npx vibe-checking --with-cursor-history                       # scan + trace Cursor prompts
+npx vibe-checking --with-claude-history                       # scan + trace Claude Code prompts
+npx vibe-checking --with-cursor-history --with-claude-history # scan + trace both
 ```
 
 ## Interactive commands
