@@ -37,16 +37,44 @@ function findCorrelation(
   const findingPath = extractFilePath(finding.path);
   if (!findingPath) return null;
 
+  const findingBase = basename(findingPath);
+  // For migration files, extract the name portion without timestamp prefix and .sql extension
+  // e.g. "001_hexagon_system.sql" → "hexagon_system", "20260520_cleanup.sql" → "cleanup"
+  const findingMigrationName = findingBase.replace(/^\d+_/, "").replace(/\.sql$/, "").toLowerCase();
+
   for (const session of sessions) {
     for (const prompt of session.prompts) {
       const matchedFile = prompt.filesGenerated.find((f) => {
         const resolved = f.startsWith("/") ? f : resolve(repoPath, f);
-        return (
+        const resolvedBase = basename(resolved);
+
+        // Exact path match
+        if (
           resolved.endsWith(findingPath) ||
-          basename(resolved) === basename(findingPath) ||
           f === findingPath ||
           f.endsWith(findingPath)
-        );
+        ) {
+          return true;
+        }
+
+        // Basename match
+        if (resolvedBase === findingBase) return true;
+
+        // Migration fuzzy match: apply_migration stores partial names like
+        // "supabase/migrations/cleanup_cycling_taxonomy" which need to match
+        // "supabase/migrations/20260520223550_cleanup_cycling_taxonomy.sql"
+        if (findingPath.includes("supabase/migrations/") && f.includes("supabase/migrations/")) {
+          const genName = basename(f).replace(/^\d+_/, "").replace(/\.sql$/, "").toLowerCase();
+          if (genName && findingMigrationName && genName === findingMigrationName) return true;
+          // Also match if one contains the other (partial name from apply_migration)
+          if (genName && findingMigrationName) {
+            if (genName.includes(findingMigrationName) || findingMigrationName.includes(genName)) {
+              return true;
+            }
+          }
+        }
+
+        return false;
       });
 
       if (matchedFile) {

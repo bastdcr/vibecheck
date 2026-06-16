@@ -4,13 +4,16 @@ import { resolve } from "node:path";
 import pc from "picocolors";
 import { runAllScanners } from "./scanners/aggregator.js";
 import { readClaudeHistory } from "./claude/reader.js";
+import { readCursorHistory } from "./cursor/reader.js";
 import { correlateFindings } from "./claude/correlator.js";
 import { printBoot, printNoFindings } from "./repl/display.js";
 import { startRepl } from "./repl/repl.js";
+import type { ClaudeSession } from "./types.js";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const withClaudeHistory = args.includes("--with-claude-history");
+  const withCursorHistory = args.includes("--with-cursor-history");
   const dbUrlIdx = args.indexOf("--db-url");
   const dbUrl = dbUrlIdx !== -1 ? args[dbUrlIdx + 1] : undefined;
   const helpFlag = args.includes("--help") || args.includes("-h");
@@ -30,36 +33,48 @@ async function main(): Promise<void> {
   }
 
   // Banner
-  console.log(
-    `$ npx vibecheck ${withClaudeHistory ? pc.magenta("--with-claude-history") : ""}`
-  );
+  const flags: string[] = [];
+  if (withClaudeHistory) flags.push(pc.magenta("--with-claude-history"));
+  if (withCursorHistory) flags.push(pc.magenta("--with-cursor-history"));
+  console.log(`$ npx vibecheck ${flags.join(" ")}`);
   console.log();
 
   // Run scanners
   const result = await runAllScanners(
-    { repoPath, dbUrl, withClaudeHistory },
+    { repoPath, dbUrl, withClaudeHistory: withClaudeHistory || withCursorHistory },
     (msg) => console.log(pc.dim(msg))
   );
 
-  // Read Claude history if requested
+  // Collect AI session history from all requested sources
+  const allSessions: ClaudeSession[] = [];
+
   if (withClaudeHistory) {
     try {
-      const { sessions, sessionCount } =
-        await readClaudeHistory(repoPath);
+      const { sessions, sessionCount } = await readClaudeHistory(repoPath);
       result.stats.claudeSessions = sessionCount;
-
-      if (sessions.length > 0 && result.findings.length > 0) {
-        correlateFindings(result.findings, sessions, repoPath);
-      }
+      allSessions.push(...sessions);
     } catch (err) {
       console.log(
-        pc.dim(
-          pc.yellow(
-            `  ⚠ could not read claude history: ${String(err)}`
-          )
-        )
+        pc.dim(pc.yellow(`  ⚠ could not read claude history: ${String(err)}`))
       );
     }
+  }
+
+  if (withCursorHistory) {
+    try {
+      const { sessions, sessionCount } = await readCursorHistory(repoPath);
+      result.stats.cursorSessions = sessionCount;
+      allSessions.push(...sessions);
+    } catch (err) {
+      console.log(
+        pc.dim(pc.yellow(`  ⚠ could not read cursor history: ${String(err)}`))
+      );
+    }
+  }
+
+  // Correlate findings with prompts from all sources
+  if (allSessions.length > 0 && result.findings.length > 0) {
+    correlateFindings(result.findings, allSessions, repoPath);
   }
 
   // Fill in manual notes for findings that weren't correlated
@@ -76,7 +91,7 @@ async function main(): Promise<void> {
   }
 
   // Boot line
-  printBoot(result.stats, withClaudeHistory);
+  printBoot(result.stats, withClaudeHistory, withCursorHistory);
 
   if (result.findings.length === 0) {
     printNoFindings();
@@ -97,14 +112,18 @@ ${pc.dim("USAGE")}
 ${pc.dim("OPTIONS")}
   --with-claude-history   Read Claude Code session history and correlate
                           findings to the prompts that generated them
+  --with-cursor-history   Read Cursor agent transcripts and correlate
+                          findings to the prompts that generated them
   --db-url <url>          Live Supabase RLS check via a postgres connection
   -h, --help              Show this help
 
 ${pc.dim("EXAMPLES")}
-  npx vibecheck                             scan current directory
-  npx vibecheck --with-claude-history       scan + trace prompt origins
-  npx vibecheck --db-url postgres://...     include live RLS check
-  npx vibecheck ~/projects/my-app           scan a specific directory
+  npx vibecheck                                             scan current directory
+  npx vibecheck --with-claude-history                       scan + trace Claude prompts
+  npx vibecheck --with-cursor-history                       scan + trace Cursor prompts
+  npx vibecheck --with-claude-history --with-cursor-history scan + trace both
+  npx vibecheck --db-url postgres://...                     include live RLS check
+  npx vibecheck ~/projects/my-app                           scan a specific directory
 
 ${pc.dim("COMMANDS (interactive)")}
   1-N        inspect a finding

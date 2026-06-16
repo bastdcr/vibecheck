@@ -26,6 +26,7 @@ export interface ScanResult {
     sourceScanned: boolean;
     supabaseMigrations: boolean;
     claudeSessions: number;
+    cursorSessions: number;
     stack: string[];
     contributors: number;
   };

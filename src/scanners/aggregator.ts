@@ -81,6 +81,7 @@ export async function runAllScanners(
       sourceScanned: sast.available,
       supabaseMigrations: rls.available,
       claudeSessions: 0,
+      cursorSessions: 0,
       stack,
       contributors,
     },

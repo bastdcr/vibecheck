@@ -21,7 +21,6 @@ export async function readClaudeHistory(
     allSessions.push(...sessions);
   }
 
-  // Sort by timestamp, newest first
   allSessions.sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
@@ -33,7 +32,7 @@ async function findSessionFiles(
   baseDir: string,
   repoPath: string
 ): Promise<ClaudeSession[]> {
-  const sessions: ClauseSession[] = [];
+  const sessions: ClaudeSession[] = [];
 
   async function walk(dir: string): Promise<void> {
     let entries;
@@ -47,7 +46,6 @@ async function findSessionFiles(
       const fullPath = join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        // Look inside project-specific directories
         await walk(fullPath);
       } else if (entry.name.endsWith(".jsonl") || entry.name.endsWith(".json")) {
         try {
@@ -66,8 +64,6 @@ async function findSessionFiles(
   return sessions;
 }
 
-type ClauseSession = ClaudeSession;
-
 async function parseSessionFile(
   filePath: string,
   repoPath: string
@@ -77,8 +73,6 @@ async function parseSessionFile(
 
   let sessionTimestamp = "";
   const prompts: ClaudePrompt[] = [];
-
-  // Check if this session is related to the repo
   let isRelevant = false;
 
   for (const line of lines) {
@@ -89,7 +83,7 @@ async function parseSessionFile(
       continue;
     }
 
-    // Detect relevance from the session's working directory or file paths
+    // Detect relevance from cwd field
     if (!isRelevant) {
       const cwd = (entry.cwd || entry.workingDirectory || "") as string;
       if (cwd && resolve(cwd).startsWith(repoPath)) {
@@ -97,11 +91,36 @@ async function parseSessionFile(
       }
     }
 
-    // Extract user messages as prompts
-    const role = entry.role || entry.type;
+    // Normalize: Claude Code nests message under entry.message
+    const msg = (
+      entry.message && typeof entry.message === "object"
+        ? entry.message
+        : entry
+    ) as Record<string, unknown>;
+    const role =
+      (msg.role as string) || (entry.role as string) || (entry.type as string) || "";
+
+    // Extract user prompts
     if (role === "human" || role === "user") {
-      const text = extractText(entry);
-      if (text) {
+      // Skip pure tool_result lines (they are user-type but contain tool output, not prompts)
+      if (entry.toolUseResult !== undefined) {
+        // But harvest file paths from toolUseResult
+        const tur = entry.toolUseResult;
+        if (tur && typeof tur === "object") {
+          const turObj = tur as Record<string, unknown>;
+          const fp = turObj.filePath as string;
+          if (fp && prompts.length > 0) {
+            const lastPrompt = prompts[prompts.length - 1];
+            if (!lastPrompt.filesGenerated.includes(fp)) {
+              lastPrompt.filesGenerated.push(fp);
+            }
+          }
+        }
+        continue;
+      }
+
+      const text = extractText(msg);
+      if (text && text.length > 5) {
         const ts =
           (entry.timestamp as string) ||
           (entry.createdAt as string) ||
@@ -117,14 +136,14 @@ async function parseSessionFile(
       }
     }
 
-    // Extract assistant responses with tool usage to find generated files
+    // Extract assistant tool calls to find generated files
     if (role === "assistant") {
-      const toolCalls = extractToolCalls(entry);
+      const toolCalls = extractToolCalls(msg);
       if (toolCalls.length > 0 && prompts.length > 0) {
         const lastPrompt = prompts[prompts.length - 1];
         lastPrompt.toolCalls.push(...toolCalls);
         for (const tc of toolCalls) {
-          if (tc.filePath) {
+          if (tc.filePath && !lastPrompt.filesGenerated.includes(tc.filePath)) {
             lastPrompt.filesGenerated.push(tc.filePath);
           }
         }
@@ -132,7 +151,7 @@ async function parseSessionFile(
     }
   }
 
-  // If file path hints at the project
+  // Check relevance by file path heuristic
   if (!isRelevant) {
     const repoName = basename(repoPath).toLowerCase();
     if (filePath.toLowerCase().includes(repoName)) {
@@ -141,7 +160,6 @@ async function parseSessionFile(
   }
 
   if (!isRelevant && prompts.length > 0) {
-    // Check if any generated files match repo files
     for (const p of prompts) {
       for (const f of p.filesGenerated) {
         if (resolve(f).startsWith(repoPath) || !f.startsWith("/")) {
@@ -155,7 +173,6 @@ async function parseSessionFile(
 
   if (!isRelevant) return null;
 
-  // Try to get session timestamp from file stat if not found in content
   if (!sessionTimestamp) {
     try {
       const s = await stat(filePath);
@@ -168,13 +185,13 @@ async function parseSessionFile(
   return { timestamp: sessionTimestamp, prompts };
 }
 
-function extractText(entry: Record<string, unknown>): string {
-  if (typeof entry.content === "string") return entry.content;
+function extractText(msg: Record<string, unknown>): string {
+  if (typeof msg.content === "string") return msg.content;
 
-  if (typeof entry.message === "string") return entry.message;
+  if (typeof msg.message === "string") return msg.message;
 
-  if (Array.isArray(entry.content)) {
-    const texts = entry.content
+  if (Array.isArray(msg.content)) {
+    const texts = msg.content
       .filter(
         (c: Record<string, unknown>) =>
           c.type === "text" && typeof c.text === "string"
@@ -183,54 +200,75 @@ function extractText(entry: Record<string, unknown>): string {
     return texts.join("\n");
   }
 
+  // Recurse into nested message
   if (
-    entry.message &&
-    typeof entry.message === "object" &&
-    (entry.message as Record<string, unknown>).content
+    msg.message &&
+    typeof msg.message === "object" &&
+    (msg.message as Record<string, unknown>).content
   ) {
-    return extractText(entry.message as Record<string, unknown>);
+    return extractText(msg.message as Record<string, unknown>);
   }
 
   return "";
 }
 
-function extractToolCalls(entry: Record<string, unknown>): ToolCall[] {
+function extractToolCalls(msg: Record<string, unknown>): ToolCall[] {
   const calls: ToolCall[] = [];
 
-  const content = entry.content;
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (block.type === "tool_use" || block.type === "tool_call") {
-        const tc: ToolCall = {
-          tool: (block.name || block.function?.name || "unknown") as string,
-          args: (block.input || block.function?.arguments || {}) as Record<
-            string,
-            unknown
-          >,
-        };
+  // Claude Code: tool_use blocks are in msg.content (which is message.content)
+  const content = msg.content;
+  if (!Array.isArray(content)) return calls;
 
-        // Extract file paths from write/create tool calls
-        const toolName = tc.tool.toLowerCase();
-        if (
-          toolName.includes("write") ||
-          toolName.includes("create") ||
-          toolName.includes("edit") ||
-          toolName.includes("file")
-        ) {
-          const path =
-            (tc.args.file_path as string) ||
-            (tc.args.path as string) ||
-            (tc.args.filePath as string) ||
-            (tc.args.file as string);
-          if (path) {
-            tc.filePath = path;
-            tc.content = (tc.args.content as string) || undefined;
-          }
-        }
+  for (const block of content) {
+    if (
+      !block ||
+      typeof block !== "object" ||
+      (block.type !== "tool_use" && block.type !== "tool_call")
+    ) {
+      continue;
+    }
 
-        calls.push(tc);
+    const tc: ToolCall = {
+      tool: (block.name || block.function?.name || "unknown") as string,
+      args: (block.input || block.function?.arguments || {}) as Record<
+        string,
+        unknown
+      >,
+    };
+
+    const toolName = tc.tool.toLowerCase();
+
+    // Write / Create / Edit / StrReplace / EditNotebook — direct file writes
+    if (
+      toolName.includes("write") ||
+      toolName.includes("create") ||
+      toolName.includes("edit") ||
+      toolName.includes("file") ||
+      toolName.includes("strreplace") ||
+      toolName.includes("notebookedit")
+    ) {
+      const path =
+        (tc.args.file_path as string) ||
+        (tc.args.path as string) ||
+        (tc.args.filePath as string) ||
+        (tc.args.file as string) ||
+        (tc.args.target_notebook as string);
+      if (path) {
+        tc.filePath = path;
+        tc.content = (tc.args.content as string) || (tc.args.contents as string) || undefined;
       }
     }
+
+    // mcp__supabase__apply_migration — derive migration file path from name
+    if (toolName.includes("apply_migration")) {
+      const migrationName = tc.args.name as string;
+      if (migrationName) {
+        tc.filePath = `supabase/migrations/${migrationName}`;
+        tc.content = tc.args.query as string || undefined;
+      }
+    }
+
+    calls.push(tc);
   }
 
   return calls;

@@ -7,6 +7,14 @@ const execFileAsync = promisify(execFile);
 
 interface SemgrepResult {
   results: SemgrepMatch[];
+  errors?: SemgrepError[];
+}
+
+interface SemgrepError {
+  message?: string;
+  long_msg?: string;
+  type?: string;
+  level?: string;
 }
 
 interface SemgrepMatch {
@@ -77,6 +85,18 @@ function mapSeverity(sev: string): "critical" | "medium" {
   return sev.toLowerCase() === "error" ? "critical" : "medium";
 }
 
+function formatSemgrepErrors(errors: SemgrepError[]): string {
+  return errors
+    .map((e) => e.long_msg || e.message || e.type || "unknown error")
+    .filter(Boolean)
+    .join("; ");
+}
+
+function parseSemgrepOutput(stdout: string): SemgrepResult {
+  if (!stdout) return { results: [], errors: [] };
+  return JSON.parse(stdout);
+}
+
 export async function scanSAST(
   repoPath: string,
   onProgress?: OnProgress
@@ -107,30 +127,53 @@ export async function scanSAST(
         "auto",
         "--json",
         "--quiet",
-        "--no-git-ignore",
         "--timeout",
-        "60",
+        "120",
         repoPath,
       ],
       { maxBuffer: 50 * 1024 * 1024, timeout: 300_000 }
     );
 
-    const result: SemgrepResult = JSON.parse(stdout || '{"results":[]}');
-    return { findings: resultsToFindings(result.results), available: true };
+    const result = parseSemgrepOutput(stdout);
+
+    if (result.errors?.length && (!result.results || result.results.length === 0)) {
+      return {
+        findings: [],
+        available: true,
+        error: `semgrep: ${formatSemgrepErrors(result.errors)}`,
+      };
+    }
+
+    return { findings: resultsToFindings(result.results ?? []), available: true };
   } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string };
+    const e = err as { code?: number; stdout?: string; stderr?: string; message?: string };
+
+    // semgrep may exit non-zero but still produce valid JSON with results and/or errors
     if (e.stdout) {
       try {
-        const result: SemgrepResult = JSON.parse(e.stdout);
-        return { findings: resultsToFindings(result.results), available: true };
+        const result = parseSemgrepOutput(e.stdout);
+
+        if (result.results && result.results.length > 0) {
+          return { findings: resultsToFindings(result.results), available: true };
+        }
+
+        if (result.errors?.length) {
+          return {
+            findings: [],
+            available: true,
+            error: `semgrep: ${formatSemgrepErrors(result.errors)}`,
+          };
+        }
       } catch {
-        /* fall through */
+        /* JSON parse failed — fall through */
       }
     }
+
+    const detail = e.stderr || e.message || String(err);
     return {
       findings: [],
       available: true,
-      error: `semgrep error: ${e.stderr?.slice(0, 200) || String(err)}`,
+      error: `semgrep error (exit ${e.code ?? "?"}): ${detail}`,
     };
   }
 }

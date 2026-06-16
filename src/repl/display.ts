@@ -30,10 +30,12 @@ export function printBoot(
     sourceScanned: boolean;
     supabaseMigrations: boolean;
     claudeSessions: number;
+    cursorSessions: number;
     stack: string[];
     contributors: number;
   },
-  withClaude: boolean
+  withClaude: boolean,
+  withCursor: boolean = false
 ): void {
   const parts: string[] = [];
   if (stats.gitHistory) parts.push("git history");
@@ -41,6 +43,9 @@ export function printBoot(
   if (stats.supabaseMigrations) parts.push("supabase migrations");
   if (withClaude && stats.claudeSessions > 0) {
     parts.push(pc.green(`${stats.claudeSessions} claude code sessions`));
+  }
+  if (withCursor && stats.cursorSessions > 0) {
+    parts.push(pc.green(`${stats.cursorSessions} cursor sessions`));
   }
 
   console.log(

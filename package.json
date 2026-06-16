@@ -1,17 +1,25 @@
 {
-  "name": "vibecheck",
-  "version": "1.0.0",
+  "name": "vibe-checking",
+  "version": "1.0.2",
   "description": "Audit AI-generated codebases — trace security findings back to the prompts that caused them",
   "type": "module",
   "bin": {
-    "vibecheck": "./dist/index.js"
+    "vibecheck": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js"
   },
-  "keywords": ["security", "audit", "cli", "ai", "claude", "sast", "secrets"],
+  "keywords": [
+    "security",
+    "audit",
+    "cli",
+    "ai",
+    "claude",
+    "sast",
+    "secrets"
+  ],
   "license": "MIT",
   "devDependencies": {
     "typescript": "^5.5.0",
