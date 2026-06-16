@@ -16,7 +16,9 @@ No account. No API key. No upload. Everything stays local.
 2. **Reads** your Claude Code and/or Cursor session history
 3. **Correlates** each finding to the prompt that generated it — the PROMPT TRACE
 4. **Shows** rewritten prompts that would have produced secure code the first time
-5. **Generates** a shareable HTML report (`vibecheck-report.html`)
+5. **Generates** a local HTML report (`vibecheck-report.html`)
+
+Without `--with-claude-history` or `--with-cursor-history`, the scan still runs and produces findings — but without prompt traces or rewritten prompts. Add the flags to get the full correlation.
 
 ## How it works
 
@@ -56,7 +58,7 @@ The rewritten prompts are static templates (no LLM call) — the tool works full
 ## Usage
 
 ```bash
-npx vibe-checking                                             # scan current directory
+npx vibe-checking                                             # scan only (no prompt correlation)
 npx vibe-checking --with-claude-history                       # scan + trace Claude Code prompts
 npx vibe-checking --with-cursor-history                       # scan + trace Cursor prompts
 npx vibe-checking --with-claude-history --with-cursor-history # scan + trace both
