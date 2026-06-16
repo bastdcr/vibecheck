@@ -5,10 +5,29 @@ import pc from "picocolors";
 
 const MARKER = "# vibecheck hook";
 
-const PRE_PUSH_SCRIPT = `#!/bin/sh
-${MARKER}
+const VIBECHECK_BLOCK = `${MARKER}
 npx vibe-checking --with-cursor-history --with-claude-history
+if [ $? -ne 0 ]; then exit 1; fi`;
+
+const PRE_PUSH_SCRIPT = `#!/bin/sh
+${VIBECHECK_BLOCK}
 `;
+
+/** Insert vibecheck before the first bare `exit` or `exit 0`, or append if none found. */
+function insertBeforeFirstExit(content: string, block: string): string {
+  const lines = content.split("\n");
+  const exitPattern = /^\s*exit(\s+0)?\s*(#.*)?$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (exitPattern.test(lines[i])) {
+      const before = lines.slice(0, i);
+      const after = lines.slice(i);
+      return [...before, "", block, "", ...after].join("\n");
+    }
+  }
+
+  return content.trimEnd() + "\n\n" + block + "\n";
+}
 
 function hookPath(repoPath: string): string {
   return join(repoPath, ".git", "hooks", "pre-push");
@@ -40,8 +59,7 @@ export async function installHook(repoPath: string): Promise<void> {
       console.log(pc.dim("vibecheck hook is already installed."));
       return;
     }
-    // Append to existing hook
-    await writeFile(path, existing.trimEnd() + "\n\n" + PRE_PUSH_SCRIPT, "utf-8");
+    await writeFile(path, insertBeforeFirstExit(existing, VIBECHECK_BLOCK), "utf-8");
     console.log(pc.green("✓ vibecheck added to existing pre-push hook."));
   } else {
     if (!existsSync(hooksDir)) {
@@ -81,7 +99,10 @@ export async function removeHook(repoPath: string): Promise<void> {
   } else {
     // Remove just our section
     const cleaned = content
-      .replace(/\n*# vibecheck hook\nnpx vibe-checking[^\n]*/g, "")
+      .replace(
+        /\n*# vibecheck hook\nnpx vibe-checking[^\n]*\nif \[ \$\? -ne 0 \]; then exit 1; fi/g,
+        ""
+      )
       .trimEnd() + "\n";
     await writeFile(path, cleaned, "utf-8");
     console.log(pc.green("✓ vibecheck removed from pre-push hook."));

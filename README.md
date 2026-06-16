@@ -81,6 +81,13 @@ Commit `.vibecheck` to share decisions with your team. If all findings are handl
 
 `npx vibe-checking hook install` adds a pre-push hook to your repo. Every time you `git push`, vibecheck runs a full scan. If there are open findings, the REPL opens and you need to handle them before the push goes through. If everything is already solved or ignored, the push passes immediately.
 
+If you installed the hook before v1.2.1, remove and reinstall so vibecheck runs before any existing `exit 0` in your hook:
+
+```bash
+npx vibe-checking hook remove
+npx vibe-checking hook install
+```
+
 To skip the hook once: `git push --no-verify`.
 
 ## How it works

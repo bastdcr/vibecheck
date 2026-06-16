@@ -42,6 +42,20 @@ export async function startRepl(
   rl.prompt();
 
   return new Promise<void>((resolve) => {
+    let finished = false;
+
+    async function finish(withReport: boolean): Promise<void> {
+      if (finished) return;
+      finished = true;
+      await saveState(repoPath, findings, statuses);
+      if (withReport) {
+        const reportPath = "vibecheck-report.html";
+        await generateReport(findings, statuses, stats, repoPath);
+        printFinish(findings, statuses, reportPath, repoPath);
+      }
+      resolve();
+    }
+
     rl.on("line", async (raw: string) => {
       const cmd = raw.trim().toLowerCase();
 
@@ -161,12 +175,8 @@ export async function startRepl(
       }
 
       if (cmd === "q" || cmd === "quit" || cmd === "exit") {
-        await saveState(repoPath, findings, statuses);
-        const reportPath = "vibecheck-report.html";
-        await generateReport(findings, statuses, stats, repoPath);
-        printFinish(findings, statuses, reportPath, repoPath);
+        await finish(true);
         rl.close();
-        resolve();
         return;
       }
 
@@ -182,7 +192,7 @@ export async function startRepl(
     });
 
     rl.on("close", () => {
-      resolve();
+      void finish(false);
     });
   });
 }
