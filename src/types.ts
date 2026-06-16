@@ -17,7 +17,7 @@ export interface Finding {
   manual: string | null;
 }
 
-export type FindingStatus = "open" | "ignored";
+export type FindingStatus = "open" | "ignored" | "solved";
 
 export interface ScanResult {
   findings: Finding[];

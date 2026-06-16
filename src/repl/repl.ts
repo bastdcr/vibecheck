@@ -10,10 +10,12 @@ import {
   printVibeAnalysis,
 } from "./display.js";
 import { generateReport } from "../report/html.js";
+import { saveState } from "../state/store.js";
 import type { VibeAnalysis } from "../analysis/behavior.js";
 
 export async function startRepl(
   findings: Finding[],
+  initialStatuses: FindingStatus[],
   stats: {
     gitHistory: boolean;
     sourceScanned: boolean;
@@ -25,7 +27,7 @@ export async function startRepl(
   repoPath: string,
   vibeAnalysis?: VibeAnalysis
 ): Promise<void> {
-  const statuses: FindingStatus[] = findings.map(() => "open");
+  const statuses: FindingStatus[] = [...initialStatuses];
   let current = -1;
 
   printList(findings, statuses);
@@ -60,6 +62,29 @@ export async function startRepl(
               pc.gray(
                 `no finding ${cmd}. there are ${findings.length}.`
               )
+            )
+          );
+          console.log();
+        }
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === "solved" || cmd === "s") {
+        if (current < 0) {
+          console.log(
+            pc.dim(
+              pc.gray("inspect a finding first — type its number.")
+            )
+          );
+          console.log();
+        } else {
+          statuses[current] =
+            statuses[current] === "solved" ? "open" : "solved";
+          const n = String(current + 1).padStart(2, "0");
+          console.log(
+            pc.dim(
+              `finding ${n} ${statuses[current] === "solved" ? pc.green("marked as solved") : "restored to open"}.`
             )
           );
           console.log();
@@ -136,9 +161,10 @@ export async function startRepl(
       }
 
       if (cmd === "q" || cmd === "quit" || cmd === "exit") {
+        await saveState(repoPath, findings, statuses);
         const reportPath = "vibecheck-report.html";
         await generateReport(findings, statuses, stats, repoPath);
-        printFinish(findings, statuses, reportPath);
+        printFinish(findings, statuses, reportPath, repoPath);
         rl.close();
         resolve();
         return;

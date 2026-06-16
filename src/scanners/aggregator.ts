@@ -127,7 +127,7 @@ async function detectStack(repoPath: string): Promise<string[]> {
 
 export function computeScore(
   findings: Finding[],
-  statuses: Array<"open" | "fixed" | "ignored">
+  statuses: Array<"open" | "ignored" | "solved">
 ): { score: number; verdict: string; col: string } {
   const open = statuses.filter((s) => s === "open").length;
   const cleared = findings.length - open;

@@ -1,8 +1,10 @@
 # vibecheck
 
-The problem isn't the LLM. It's human behavior around generated code.
+Security audit for AI-generated codebases.
 
-vibecheck scans your codebase for security vulnerabilities, then analyzes how you interacted with the AI that wrote the code. It traces each finding back to the prompt that caused it, detects blind approval chains, and flags sessions where security was never mentioned.
+vibecheck finds security vulnerabilities in your code and traces each one back to the AI prompt that introduced it.
+
+Run it before you deploy, or whenever you want to check what your AI sessions left behind.
 
 No account. No API key. Nothing leaves your machine.
 
@@ -12,7 +14,11 @@ No account. No API key. Nothing leaves your machine.
 npx vibe-checking --with-cursor-history --with-claude-history
 ```
 
-Run this from your project directory.
+Run this from your project directory. To scan automatically on every push:
+
+```bash
+npx vibe-checking hook install
+```
 
 ## What it checks
 
@@ -44,6 +50,8 @@ npx vibe-checking                                             # security scan on
 npx vibe-checking --with-cursor-history                       # scan + vibe analysis (Cursor)
 npx vibe-checking --with-claude-history                       # scan + vibe analysis (Claude)
 npx vibe-checking --with-cursor-history --with-claude-history # scan + vibe analysis (both)
+npx vibe-checking hook install                                # add pre-push hook
+npx vibe-checking hook remove                                 # remove pre-push hook
 ```
 
 ## Interactive commands
@@ -53,11 +61,27 @@ Once the scan completes, you get an interactive prompt:
 | Command | Action |
 |---------|--------|
 | `1`, `2`, `3`... | Inspect a finding (shows prompt trace + missing constraints) |
+| `solved` | Mark finding as fixed in code |
 | `ignore` | Dismiss the current finding |
 | `next` | Jump to the next open finding |
 | `list` | Reprint the list with updated score |
 | `vibe` | Show vibe coding behavior analysis |
-| `q` | Save an HTML report and exit |
+| `q` | Save statuses and write report |
+
+## Persistent statuses
+
+Findings you mark as `solved` or `ignore` are saved in a `.vibecheck` file at the root of your repo. On the next scan, vibecheck loads these statuses:
+
+- **ignored** findings stay dismissed
+- **solved** findings are re-checked — if the vulnerability is still there, it goes back to open
+
+Commit `.vibecheck` to share decisions with your team. If all findings are handled, the scan passes silently.
+
+## Git hook
+
+`npx vibe-checking hook install` adds a pre-push hook to your repo. Every time you `git push`, vibecheck runs a full scan. If there are open findings, the REPL opens and you need to handle them before the push goes through. If everything is already solved or ignored, the push passes immediately.
+
+To skip the hook once: `git push --no-verify`.
 
 ## How it works
 
@@ -66,13 +90,10 @@ Everything runs locally:
 - **RLS analysis** parses your SQL migration files directly
 - **npm audit** checks your lock file against the npm vulnerability database
 - **Prompt history** is read from local files (`~/.claude/projects/` and `~/.cursor/projects/`)
-- The **behavior analysis** is pattern matching on your prompt text and session structure
+- **Behavior analysis** is pattern matching on your prompt text and session structure
+- **Statuses** are saved in `.vibecheck` at the root of your repo
 
-No API keys needed. No code uploaded. The HTML report is saved locally.
-
-## Privacy
-
-Everything runs locally. The scanners are local binaries. The session history is read from local files. The HTML report is saved to your project directory. Nothing is uploaded, no telemetry, no account required.
+No API keys needed. No code uploaded.
 
 ---
 

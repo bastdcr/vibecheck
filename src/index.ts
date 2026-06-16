@@ -9,11 +9,27 @@ import { correlateFindings } from "./claude/correlator.js";
 import { printBoot, printVibeAnalysis, printNoFindings } from "./repl/display.js";
 import { startRepl } from "./repl/repl.js";
 import { analyzeVibePatterns } from "./analysis/behavior.js";
+import { loadState, applyState, saveState } from "./state/store.js";
 import type { VibeAnalysis } from "./analysis/behavior.js";
 import type { ClaudeSession } from "./types.js";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+
+  // Subcommand: hook install/remove
+  if (args[0] === "hook") {
+    const { installHook, removeHook } = await import("./hooks/installer.js");
+    const repoPath = process.cwd();
+    if (args[1] === "install") {
+      await installHook(repoPath);
+    } else if (args[1] === "remove") {
+      await removeHook(repoPath);
+    } else {
+      console.log(pc.dim("usage: npx vibe-checking hook install|remove"));
+    }
+    return;
+  }
+
   const withClaudeHistory = args.includes("--with-claude-history");
   const withCursorHistory = args.includes("--with-cursor-history");
   const dbUrlIdx = args.indexOf("--db-url");
@@ -107,8 +123,28 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Load persisted statuses from .vibecheck
+  const savedState = await loadState(repoPath);
+  const statuses = applyState(result.findings, savedState);
+
+  // If all findings are already handled, skip the REPL
+  const openCount = statuses.filter((s) => s === "open").length;
+  if (openCount === 0) {
+    const { printList } = await import("./repl/display.js");
+    printList(result.findings, statuses);
+    console.log();
+    console.log(
+      pc.green("all findings handled — nothing to review.")
+    );
+    console.log(
+      pc.dim(pc.gray("no code, prompts, or secrets left this machine."))
+    );
+    console.log();
+    process.exit(0);
+  }
+
   // Start interactive REPL
-  await startRepl(result.findings, result.stats, repoPath, vibeAnalysis);
+  await startRepl(result.findings, statuses, result.stats, repoPath, vibeAnalysis);
 }
 
 function printUsage(): void {
@@ -136,12 +172,17 @@ ${pc.dim("EXAMPLES")}
 
 ${pc.dim("COMMANDS (interactive)")}
   1-N        inspect a finding
+  solved / s mark finding as fixed in code
   ignore / i dismiss the current finding
   next / n   jump to the next open finding
   list / l   reprint findings
   vibe / v   show vibe coding behavior analysis
   help / ?   show commands
-  q          finish and write report
+  q          save statuses and write report
+
+${pc.dim("HOOKS")}
+  npx vibe-checking hook install   add pre-push hook to this repo
+  npx vibe-checking hook remove    remove the pre-push hook
 
 ${pc.dim(pc.gray("local only — no code, prompts, or secrets leave this machine."))}
 `);

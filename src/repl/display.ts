@@ -2,6 +2,7 @@ import pc from "picocolors";
 import type { Finding, FindingStatus } from "../types.js";
 import type { VibeAnalysis } from "../analysis/behavior.js";
 import { computeScore } from "../scanners/aggregator.js";
+import { isHookInstalled } from "../hooks/installer.js";
 
 const RULE_LINE =
   "─────────────────────────────────────────────────────────────";
@@ -129,6 +130,7 @@ export function printList(
     const status = statuses[i];
 
     let tag = "";
+    if (status === "solved") tag = " " + pc.green("✓ solved");
     if (status === "ignored") tag = " " + pc.dim("⊘ ignored");
 
     const line = `  ${pc.dim(n)}  ${sevTag(f.severity)}  ${pc.dim(f.path)}${tag}`;
@@ -194,7 +196,7 @@ export function printInspect(
     console.log(
       pc.dim(
         pc.gray(
-          `commands: ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
+          `commands: ${pc.magenta("solved")} · ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
         )
       )
     );
@@ -204,7 +206,7 @@ export function printInspect(
     console.log(
       pc.dim(
         pc.gray(
-          `commands: ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
+          `commands: ${pc.magenta("solved")} · ${pc.magenta("ignore")} · ${pc.magenta("next")} · ${pc.magenta("list")}`
         )
       )
     );
@@ -228,6 +230,9 @@ export function printHelp(findingCount: number): void {
     `  ${pc.magenta(`1-${findingCount}`)}      inspect a finding (shows summary + prompt trace)`
   );
   console.log(
+    `  ${pc.magenta("solved")}   mark finding as fixed in code`
+  );
+  console.log(
     `  ${pc.magenta("ignore")}   dismiss the current finding`
   );
   console.log(
@@ -248,13 +253,19 @@ export function printHelp(findingCount: number): void {
 export function printFinish(
   findings: Finding[],
   statuses: FindingStatus[],
-  reportPath: string
+  reportPath: string,
+  repoPath?: string
 ): void {
   const generationCaused = findings.filter((f) => f.trace !== null).length;
+  const solved = statuses.filter((s) => s === "solved").length;
+  const ignored = statuses.filter((s) => s === "ignored").length;
 
   console.log();
   console.log(pc.dim("writing report…"));
   console.log(pc.green(`✓ ${reportPath} saved`));
+  if (solved > 0 || ignored > 0) {
+    console.log(pc.green(`✓ .vibecheck updated (${solved} solved, ${ignored} ignored)`));
+  }
   console.log();
 
   if (generationCaused > 0) {
@@ -278,6 +289,14 @@ export function printFinish(
   );
   console.log(pc.dim(pc.gray("→ https://www.symbioticsec.ai")));
   console.log();
+
+  if (repoPath && !isHookInstalled(repoPath)) {
+    console.log(
+      pc.dim(`tip: run ${pc.magenta("npx vibe-checking hook install")} to scan automatically on every push.`)
+    );
+    console.log();
+  }
+
   console.log(
     pc.dim(pc.gray("no code, prompts, or secrets left this machine."))
   );
