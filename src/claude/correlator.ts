@@ -78,7 +78,7 @@ function findCorrelation(
       });
 
       if (matchedFile) {
-        const trace = buildTrace(finding, prompt, session, matchedFile);
+        const trace = buildTrace(finding, prompt, session, matchedFile, repoPath);
         const fix = generateFix(finding, prompt);
         return { trace, fix };
       }
@@ -98,19 +98,27 @@ function extractFilePath(path: string): string | null {
   return path;
 }
 
+function relativize(filePath: string, repoPath: string): string {
+  const prefix = repoPath.endsWith("/") ? repoPath : repoPath + "/";
+  if (filePath.startsWith(prefix)) return filePath.slice(prefix.length);
+  return filePath;
+}
+
 function buildTrace(
   finding: Finding,
   prompt: ClaudePrompt,
   session: ClaudeSession,
-  matchedFile: string
+  matchedFile: string,
+  repoPath: string
 ): PromptTrace {
   const ts = formatTimestamp(prompt.timestamp || session.timestamp);
   const lineCount = estimateLineCount(prompt, matchedFile);
+  const relFile = relativize(matchedFile, repoPath);
 
   return {
     prompt: `"${truncate(prompt.text, 120)}"`,
     session: `${ts} · claude code`,
-    file: `${matchedFile}${lineCount ? ` (+${lineCount} lines)` : ""}`,
+    file: `${relFile}${lineCount ? ` (+${lineCount} lines)` : ""}`,
     result: inferResult(finding),
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "vibe-checking",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Audit AI-generated codebases — trace security findings back to the prompts that caused them",
   "type": "module",
   "bin": {
